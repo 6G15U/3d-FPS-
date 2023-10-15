@@ -1,0 +1,183 @@
+from ursina import *
+from ursina.prefabs.first_person_controller import FirstPersonController
+from ursina.shaders import lit_with_shadows_shader
+from random import randint
+app = Ursina()
+#шейдер подключение камеры обзора + игрок и его оружие
+random.seed(0)
+Entity.default_shader = lit_with_shadows_shader
+ground = Entity(model='plane', collider='box', scale=512, texture='grass', texture_scale=(4,4))
+editor_camera = EditorCamera(enabled=False, ignore_paused=True)
+player = FirstPersonController(model='cube', z=-10, color=color.orange, origin_y=-.5, speed=8, collider='box',hp=100)
+player.collider = BoxCollider(player, Vec3(0,1,0), Vec3(1,2,1))
+shift_click=0
+normal_speed=8
+hpp=1
+invs=False
+gun = Entity(model='TKB-145.obj', parent=camera, position=(.5,-.5,1.5),color=color.black,texture="horizontal_gradient", scale=(.3,.2,.1), world_scale=.03, origin_z=-.5, on_cooldown=False,rotation_y=85)
+gun.muzzle_flash1 = Entity(parent=camera, z=3.8,x=.45,y=-.3, world_scale=.3, model='quad', color=color.orange, enabled=False,rotation_z=45,rotation_y=-5)
+gun.muzzle_flash2 = Entity(parent=camera, z=3.8,x=.45,y=-.3, world_scale=.3, model='quad', color=color.orange, enabled=False,rotation_y=-5)
+HP_bar=Entity(parent=camera,z=1,x=0,y=1,scale_x=1,model='quad',color=color.green)
+shootables_parent = Entity()
+mouse.traverse_target = shootables_parent
+
+#объекты 
+## надо сделать класс стенка
+## сделать дом, наклонную лестницу, укрытия 
+wall1=Entity(model='cube', origin_y=-.5, scale=(14,.8), texture='brick', texture_scale=(14,.8),
+        x=0,
+        z=5,
+        collider='box',
+        scale_y = 6,
+        color=color.hsv(0, 0, random.uniform(.9, 1))
+        )
+wall2=Entity(model='cube', origin_y=-.5, scale=(14,.8), texture='brick', texture_scale=(14,.8),
+        x=0,
+        z=0,
+        collider='box',
+        scale_y = 6,
+        rotation_x=45,
+        rotaton_y=90,
+        color=color.hsv(0, 0, random.uniform(.9, 1))
+        )
+wall3=Entity(model='cube', origin_y=-.5, scale=(14,.8), texture='brick', texture_scale=(14,.8),
+        x=0,
+        z=0,
+        collider='box',
+        scale_y = 6,
+        rotation_x=45,
+        rotaton_y=90,
+        color=color.hsv(0, 0, random.uniform(.9, 1))
+        )
+#стенки
+border1=Entity(model='cube', origin_y=-.5, scale=(512,512), texture='brick', texture_scale=(512,512),
+        x=0,
+        z=256,
+        collider='box',
+        scale_y = 15,
+        color=color.hsv(0, 0, random.uniform(.9, 1))
+        )
+border2=Entity(model='cube', origin_y=-.5, scale=(512,512), texture='brick', texture_scale=(512,512),
+        x=256,
+        z=0,
+        rotation_y=90,
+        collider='box',
+        scale_y = 15,
+        color=color.hsv(0, 0, random.uniform(.9, 1))
+        )
+border3=Entity(model='cube', origin_y=-.5, scale=(512,512), texture='brick', texture_scale=(512,512),
+        x=0,
+        z=-256,
+        collider='box',
+        scale_y = 15,
+        color=color.hsv(0, 0, random.uniform(.9, 1))
+        )
+border4=Entity(model='cube', origin_y=-.5, scale=(512,512), texture='brick', texture_scale=(512,512),
+        x=-256,
+        z=0,
+        rotation_y=90,
+        collider='box',
+        scale_y = 15,
+        color=color.hsv(0, 0, random.uniform(.9, 1))
+        )
+#стрельба
+def update():
+    if held_keys['left mouse']:
+        shoot()
+
+def shoot():
+    if not gun.on_cooldown:
+        # print('shoot')
+        gun.on_cooldown = True
+        gun.muzzle_flash1.enabled=True
+        gun.muzzle_flash2.enabled=True
+        from ursina.prefabs.ursfx import ursfx
+        ursfx([(0.0, 0.0), (0.1, 0.9), (0.15, 0.75), (0.3, 0.14), (0.6, 0.0)], volume=0.5, wave='noise', pitch=random.uniform(-13,-12), pitch_change=-12, speed=3.0)
+        invoke(gun.muzzle_flash1.disable, delay=.05)
+        invoke(gun.muzzle_flash2.disable, delay=.05)
+        invoke(setattr, gun, 'on_cooldown', False, delay=.35)
+        if mouse.hovered_entity and hasattr(mouse.hovered_entity, 'hp'):
+            mouse.hovered_entity.hp -= 20
+            mouse.hovered_entity.blink(color.red)
+
+#враги и их хп а также движение
+from ursina.prefabs.health_bar import HealthBar
+
+class Enemy(Entity):
+    def __init__(self, **kwargs):
+        super().__init__(parent=shootables_parent, model='cube', scale_y=2, origin_y=-.5, color=color.green, collider='box', **kwargs)
+        self.health_bar = Entity(parent=self, y=1.2, model='cube', color=color.red, world_scale=(1.5,.1,.1))
+        self.max_hp = 100
+        self.hp = self.max_hp
+
+    def update(self):
+        def do_damage(self):
+            global hpp,HP_bar
+            hpp-=0.01
+            HP_bar.hide()
+            HP_bar=Entity(parent=camera,z=1,x=0,y=1,scale_x=hpp,model='quad',color=color.green)
+        dist = distance_xz(player.position, self.position)
+        hp=1
+        self.health_bar.alpha = max(0, self.health_bar.alpha - time.dt)
+        if dist>256:
+            return
+        global hpp,HP_bar,invs
+        if dist<2 and invs==False:
+            invoke(do_damage(self), True, delay=1)
+            do_damage(self)
+        self.look_at_2d(player.position, 'y')
+        hit_info = raycast(self.world_position + Vec3(0,1,0), self.forward, 1000, ignore=(self,))
+        # print(hit_info.entity)
+        if hit_info.entity == player:
+            if dist > 2:
+                self.position += self.forward * time.dt * 6
+
+    @property
+    def hp(self):
+        return self._hp
+
+    @hp.setter
+    def hp(self, value):
+        self._hp = value
+        if value <= 0:
+            destroy(self)
+            return
+
+        self.health_bar.world_scale_x = self.hp / self.max_hp * 1.5
+        self.health_bar.alpha = 1
+
+# Enemy()
+enemies = [Enemy(x=x*4,z=30) for x in range(-2,6)]
+
+# включпение камеры обзора на Tab, WASD, ускорение на Shift
+def pause_input(key):
+    if key == 'tab':    # press tab to toggle edit/play mode
+        editor_camera.enabled = not editor_camera.enabled
+
+        player.visible_self = editor_camera.enabled
+        player.cursor.enabled = not editor_camera.enabled
+        gun.enabled = not editor_camera.enabled
+        mouse.locked = not editor_camera.enabled
+        editor_camera.position = player.position
+
+        application.paused = editor_camera.enabled
+
+def input(key):
+    if key == 'esc': # кнопка выхода из игры
+        quit()
+    if key == 'shift': # кнопка быстрого бега
+        global shift_click
+        if shift_click % 2 == 0:
+            player.speed = normal_speed + 6 # увеличиваем скорость при нажатии
+            shift_click += 1
+        else:
+            player.speed = normal_speed
+            shift_click += 1
+pause_handler = Entity(ignore_paused=True, input=pause_input)
+
+
+sun = DirectionalLight()
+sun.look_at(Vec3(1,-1,-1))
+Sky()
+
+app.run()
